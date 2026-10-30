@@ -23,7 +23,7 @@ import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 import kotlin.math.abs
 
-const val VERSION = "0.5.0"
+const val VERSION = "0.5.1"
 
 /**
  * HTTP side. Plain HTTP is fine on the LAN: /v1/rpc, /v1/pair, /v1/setup and /v1/login carry only libsodium-encrypted
@@ -137,6 +137,10 @@ class Server(private val config: Config, private val service: Service, private v
         "pairing.new" -> enc(PairingCode.serializer(), args(PairingCodeArgs.serializer(), req).let { service.pairingCode(it.name, it.minutes) })
         "push" -> enc(PushResult.serializer(), service.push(device, args(PushArgs.serializer(), req)))
         "pull" -> enc(PullResult.serializer(), service.pull(device, args(PullArgs.serializer(), req)))
+        // 0.5.1: restore while logged in. master.check backs up and checks the lock first (nothing changed yet); master.replace
+        // backs up again and swaps the master copy in one transaction. Only the op name and the device id's start are logged.
+        "master.check" -> enc(MasterChecked.serializer(), service.masterCheck(device))
+        "master.replace" -> enc(MasterReplaced.serializer(), service.masterReplace(device, args(MasterReplaceArgs.serializer(), req)).also { log.info("{} replaced the master copy", device.take(8)) })
         "records" -> enc(RecordsResult.serializer(), service.records(args(RecordsArgs.serializer(), req)))
         "devices.list" -> enc(ListSerializer(DeviceInfo.serializer()), service.devices())
         "devices.revoke" -> enc(DeviceInfo.serializer(), service.revoke(args(RevokeArgs.serializer(), req).deviceId))

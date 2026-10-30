@@ -19,9 +19,9 @@ class TestWorld(lockTimeoutSeconds: Long = 120, keep: Int = 30) : AutoCloseable 
         backupKeep = keep,
     )
     val db = Db(config.dbFile)
-    val service = Service(db, config)
-    val fakeClockService = Service(db, config) { clock }
     val backups = Backups(config, db)
+    val service = Service(db, config, backupNow = { backups.runBackup() })
+    val fakeClockService = Service(db, config, { clock }, { backups.runBackup() })
     val url get() = "http://127.0.0.1:${config.port}"
 
     private var server: io.ktor.server.engine.EmbeddedServer<*, *>? = null

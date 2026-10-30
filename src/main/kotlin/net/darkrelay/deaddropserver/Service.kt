@@ -8,7 +8,13 @@ import java.util.UUID
 class DeadDropError(val code: String, message: String) : Exception(message)
 
 /** The server's rules: storage and sync, the edit lock, devices and pairing, the account and its recovery key copies. */
-class Service(private val db: Db, private val config: Config, private val now: () -> Long = System::currentTimeMillis) {
+class Service(
+    private val db: Db,
+    private val config: Config,
+    private val now: () -> Long = System::currentTimeMillis,
+    /** Writes and verifies an encrypted backup of the master copy (backup-now); throws when it can't. Used before the master is replaced. */
+    private val backupNow: () -> Unit = { throw IllegalStateException("no backups here") },
+) {
 
     // ---- storage and sync
 
@@ -76,6 +82,11 @@ class Service(private val db: Db, private val config: Config, private val now: (
 
     fun pull(deviceId: String, args: PullArgs): PullResult = db.tx {
         val limit = args.limit.coerceIn(1, 1000)
+        if (args.sinceSeq in 1..masterFloor()) {
+            // the master copy was replaced since this device's last pull (0.5.1): no changes, it takes the whole copy
+            val last = query("SELECT COALESCE(MAX(seq), 0) FROM changes") { it.getLong(1) }.single()
+            return@tx PullResult(emptyList(), last, false, emptyList(), masterReplaced = true)
+        }
         val rows = query("""SELECT seq, change_id, entity_type, entity_id, operation, changed_fields, changed_at, device_id, offline
                             FROM changes WHERE seq > ? ORDER BY seq LIMIT ?""", args.sinceSeq, limit + 1) {
             ServerChange(it.getLong(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5),
@@ -100,6 +111,77 @@ class Service(private val db: Db, private val config: Config, private val now: (
         }
         RecordsResult(rows.take(limit), rows.size > limit)
     }
+
+    // ---- replacing the master copy with a restored backup (0.5.1)
+
+    private fun Db.Tx.requireLockHeld(deviceId: String, t: Long) {
+        if (takenFrom(deviceId)) throw DeadDropError("taken_over", "another device took over editing; take the edit lock back before replacing the budget")
+        val holder = lockHolder(t)
+        if (holder != deviceId) throw DeadDropError("locked", if (holder == null) "take the edit lock first" else "another device holds the edit lock")
+    }
+
+    /** The server's own encrypted backup of the current master copy, written and read back; any failure refuses the replace. */
+    private fun backupFirst() {
+        try {
+            backupNow()
+        } catch (e: Exception) {
+            throw DeadDropError("backup_failed", "The server couldn't back up its current budget first, so it did not replace it. Nothing was changed. " +
+                "Check that its backup folder is ready, then try again.")
+        }
+    }
+
+    /** Pre-flight for a restore (before the device changes anything): the lock is held, and the server's backup works. */
+    fun masterCheck(deviceId: String): MasterChecked {
+        db.tx { requireLockHeld(deviceId, now()) }
+        backupFirst()
+        return MasterChecked(true)
+    }
+
+    /**
+     * Replaces the master copy by the restored budget in one transaction, after the server has backed up the current one
+     * (a failed backup refuses the replace and changes nothing). Needs the edit lock. Every other device finds out at its
+     * next pull ([PullResult.masterReplaced]); the change history starts over with this budget, its seqs continuing upward.
+     */
+    fun masterReplace(deviceId: String, args: MasterReplaceArgs): MasterReplaced {
+        if (args.changes.size > MAX_REPLACE) throw DeadDropError("bad_request", "at most $MAX_REPLACE changes in a replace")
+        args.changes.forEach(::validate)
+        if (args.changes.map { it.changeId }.toSet().size != args.changes.size) throw DeadDropError("bad_request", "a change id is used twice")
+        db.tx { requireLockHeld(deviceId, now()) }
+        backupFirst()
+        return db.tx {
+            val t = now()
+            requireLockHeld(deviceId, t)
+            val floor = query("SELECT COALESCE(MAX(seq), 0) FROM changes") { it.getLong(1) }.single()
+            exec("DELETE FROM records")
+            exec("DELETE FROM changes")
+            exec("DELETE FROM applied_changes")
+            exec("DELETE FROM conflicts")
+            for (c in args.changes) {
+                val existing = query("SELECT data, deleted FROM records WHERE entity_type = ? AND entity_id = ?", c.entityType, c.entityId) {
+                    json.parseToJsonElement(it.getString(1)) as JsonObject to (it.getInt(2) == 1)
+                }.firstOrNull()
+                val merged = JsonObject((existing?.first ?: JsonObject(emptyMap())) + c.changedFields)
+                val deleted = when {
+                    c.operation == "DELETE" -> true
+                    else -> (c.changedFields["deleted"] as? JsonPrimitive)?.booleanOrNull ?: existing?.second ?: false
+                }
+                exec("""INSERT INTO changes (change_id, entity_type, entity_id, operation, changed_fields, changed_at, device_id, received_at, offline)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                    c.changeId, c.entityType, c.entityId, c.operation, c.changedFields.toString(), c.timestamp, deviceId, t)
+                val seq = lastId()
+                exec("""INSERT INTO records (entity_type, entity_id, data, deleted, changed_at, changed_by, seq) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (entity_type, entity_id) DO UPDATE SET data = excluded.data, deleted = excluded.deleted,
+                        changed_at = excluded.changed_at, changed_by = excluded.changed_by, seq = excluded.seq""",
+                    c.entityType, c.entityId, merged.toString(), if (deleted) 1 else 0, c.timestamp, deviceId, seq)
+                exec("INSERT INTO applied_changes (change_id, seq, received_at) VALUES (?, ?, ?)", c.changeId, seq, t)
+            }
+            // every device whose last pull is at or below this seq must take the new copy whole
+            exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('master_floor', ?)", floor.toString())
+            MasterReplaced(args.changes.size, query("SELECT COALESCE(MAX(seq), 0) FROM changes") { it.getLong(1) }.single())
+        }
+    }
+
+    private fun Db.Tx.masterFloor(): Long = query("SELECT value FROM meta WHERE key = 'master_floor'") { it.getString(1).toLong() }.firstOrNull() ?: 0L
 
     private fun validate(c: Change) {
         fun bad(m: String): Nothing = throw DeadDropError("bad_request", m)
@@ -460,6 +542,7 @@ class Service(private val db: Db, private val config: Config, private val now: (
 
     companion object {
         const val MAX_PUSH = 5000
+        const val MAX_REPLACE = 100_000
         const val MAX_FIELDS_CHARS = 64 * 1024
         const val MAX_CLOCK_AHEAD_MS = 24L * 3600 * 1000
         const val MAX_SKEW_MS = 5L * 60 * 1000

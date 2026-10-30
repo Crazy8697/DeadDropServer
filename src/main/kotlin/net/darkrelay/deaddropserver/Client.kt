@@ -98,4 +98,6 @@ class Client(
         call("recovery.put", RecoveryStored.serializer(), obj(RecoveryPutArgs.serializer(), RecoveryPutArgs(deviceId, keyId, sealed)))
     fun recoveryGet() = call("recovery.get", RecoveryCopy.serializer())
     fun logout() = call("device.logout", LoggedOut.serializer())
+    fun masterCheck() = call("master.check", MasterChecked.serializer())
+    fun masterReplace(changes: List<Change>) = call("master.replace", MasterReplaced.serializer(), obj(MasterReplaceArgs.serializer(), MasterReplaceArgs(changes)))
 }

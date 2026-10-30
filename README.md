@@ -69,7 +69,7 @@ Save this as `docker-compose.yml`, with your own values in place of the `<...>` 
 ```yaml
 services:
   deaddrop-server:
-    image: ghcr.io/crazy8697/deaddrop-server:0.5.0
+    image: ghcr.io/crazy8697/deaddrop-server:0.5.1
     restart: unless-stopped
     ports:
       - "<port>:5090"
@@ -127,6 +127,10 @@ in the log. That makes the account and adds that device.
   recovered without the recovery key**, and the server can't help: it keeps each device's copy of that key only sealed
   to that device.
 - The server's own backups need its backup key (step 1).
+- **Restoring a backup in the app or the program while logged in replaces the server's budget** (from server 0.5.1 and app
+  1.7.2 or program 0.12.2), after a warning on the device. Before it does, the server writes and checks its own encrypted
+  backup of its current budget, in its backup folder; if it can't, nothing is changed. Every other device takes the
+  restored budget at its next sync, after saving its own.
 
 ## Running it
 

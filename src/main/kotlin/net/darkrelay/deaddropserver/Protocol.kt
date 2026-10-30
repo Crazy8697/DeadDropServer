@@ -113,8 +113,23 @@ data class ServerChange(
     val offline: Boolean,
 )
 
+/**
+ * [masterReplaced] (0.5.1): the account's master copy was replaced by a restored backup after this device's last pull. No
+ * changes come with it; the device takes the server's whole copy (records) instead, as it does at login.
+ */
 @Serializable
-data class PullResult(val changes: List<ServerChange>, val lastSeq: Long, val more: Boolean, val conflicts: List<Conflict>)
+data class PullResult(val changes: List<ServerChange>, val lastSeq: Long, val more: Boolean, val conflicts: List<Conflict>, val masterReplaced: Boolean = false)
+
+/** master.replace (0.5.1): the restored budget as a whole, one INSERT per row and the synced meta values, as an upload sends it. */
+@Serializable
+data class MasterReplaceArgs(val changes: List<Change>)
+
+@Serializable
+data class MasterReplaced(val applied: Int, val lastSeq: Long)
+
+/** master.check (0.5.1): the server wrote and verified an encrypted backup of its current master copy, and the device holds the lock. */
+@Serializable
+data class MasterChecked(val backedUp: Boolean)
 
 @Serializable
 data class RecordsArgs(val afterType: String = "", val afterId: String = "", val limit: Int = 500)

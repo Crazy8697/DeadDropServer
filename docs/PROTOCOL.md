@@ -99,10 +99,21 @@ Replay protection: `ts` must be within 5 minutes of the server's clock (`stale`)
 | `recovery.put` | `{"deviceId", "keyId", "sealed"}` | `{"stored": true}` (0.4.0): one device's sealed copy of the recovery key |
 | `recovery.get` | | `{"keyId", "sealed"}` (0.4.0): this device's sealed copy, if it is for the current key id |
 | `device.logout` | | `{"loggedOut": true}` (0.4.0): log out on close. Frees the lock if held and revokes this device, as `devices.revoke` does |
+| `master.check` | | `{"backedUp": true}` (0.5.1): the device holds the edit lock, and the server wrote and verified an encrypted backup of its current master copy. Changes nothing else |
+| `master.replace` | `{"changes": [...]}` | `{"applied", "lastSeq"}` (0.5.1): restore while logged in. Needs the edit lock. The server backs up its master copy first (a failed backup is `backup_failed` and nothing changes), then replaces it with these changes (one INSERT per row, plus the synced meta values) in one transaction |
 
-Error codes: `locked`, `taken_over`, `bad_request`, `stale`, `replay`, `unknown_op`, `not_found`, `conflict`.
+Error codes: `locked`, `taken_over`, `bad_request`, `stale`, `replay`, `unknown_op`, `not_found`, `conflict`, `backup_failed` (0.5.1).
 
 Every op is logged as its name and the first 8 characters of the device id, never its arguments.
+
+### Replacing the master copy (0.5.1)
+
+A device that restored a backup while logged in sends the restored budget with `master.replace`. The server's records, change
+history and conflict notes are replaced by it in one transaction; seqs keep counting up. Every other device finds out at its
+next `pull`: if its `sinceSeq` is at or below the last seq the old master had, the reply has `masterReplaced: true`, no
+changes, and `lastSeq` of the new master, and the device takes the whole copy with `records`, as it does at login (after a
+backup of its own budget on that device). A body over 8 MB is refused (`413`), which bounds a restored budget at roughly 15,000
+rows.
 
 ### The password (0.4.0)
 

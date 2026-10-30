@@ -34,8 +34,8 @@ fun main(argv: Array<String>) {
             else -> {
                 val config = Config.fromEnv()
                 Db(config.dbFile).use { db ->
-                    val service = Service(db, config)
                     val backups = Backups(config, db)
+                    val service = Service(db, config, backupNow = { backups.runBackup() })
                     when (args[0]) {
                         "serve" -> {
                             backups.schedule()
