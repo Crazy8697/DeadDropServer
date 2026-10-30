@@ -1,0 +1,23 @@
+Dead Drop Server
+Copyright 2026 DarkRelay
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The server and its container image include third-party components, each under its own license. They are listed in
+THIRD-PARTY-NOTICES.md, and their license texts are in the licenses folder (in the image, under
+/opt/deaddrop-server/licenses).
+
+It includes the Kotlin standard library, kotlinx-io and sqlite-jdbc, which carry these notices under section 4(d)
+of the Apache License, Version 2.0:
+
+   Kotlin Compiler
+   Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
+
+   kotlinx-io library.
+   Copyright 2017-2023 JetBrains s.r.o and respective authors and developers
+
+   sqlite-jdbc:
+   This product includes the following softwares developed by David Crawshaw.
+   See LICENSE.zentus file. (licenses/BSD-2-Clause-sqlite-jdbc-zentus.txt)
+   And also, NestedVM (Apache License Version 2.0) is used inside sqlite-
+   (the upstream NOTICE ends there; it is in licenses/sqlite-jdbc-NOTICE.txt as published)

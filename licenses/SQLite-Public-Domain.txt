@@ -1,0 +1,5 @@
+SQLite is in the public domain.
+
+From https://www.sqlite.org/copyright.html: "All of the code and documentation in SQLite has been dedicated to the
+public domain by the authors." sqlite-jdbc 3.54.1.0 carries SQLite 3.54.1, built as its native library for each
+system. No license text applies; this file records where that is stated.

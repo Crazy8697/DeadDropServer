@@ -1,0 +1,22 @@
+# build output
+/build/
+/.gradle/
+/.kotlin/
+*.class
+# never in the repo: keys, env files, data, backups
+*.env
+!deploy/deaddrop.env.example
+*.db
+*.db-wal
+*.db-shm
+*.ddbak
+*.ddbak.part
+/data/
+backup-status.json
+*.jks
+*.keystore
+*.pem
+*.key
+
+# private patterns for tools/privacy_check.py; never leaves this PC
+/tools/privacy-local.txt

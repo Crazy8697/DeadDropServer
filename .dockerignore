@@ -1,0 +1,7 @@
+*
+!build/install/deaddrop-server/**
+!deploy/entrypoint.sh
+!LICENSE
+!NOTICE
+!THIRD-PARTY-NOTICES.md
+!licenses/**

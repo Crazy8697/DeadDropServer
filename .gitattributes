@@ -1,0 +1,12 @@
+* text=auto eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+# private: never in the public source (git archive HEAD) or the image; tools/privacy_check.py checks the public set
+tools export-ignore
+tools/** export-ignore
+docs/OPERATIONS.md export-ignore
+deploy/docker-compose.yml export-ignore
+deploy/deaddrop.env.example export-ignore
+# license texts stay byte for byte as their sources publish them (tools/image_licenses.py compares them with the image)
+licenses/** -text
